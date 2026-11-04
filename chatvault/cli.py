@@ -7,8 +7,8 @@ import sys
 import time
 
 from . import __version__
-from .common import (ask, ask_yes, default_env, drive_of, is_frozen, running_apps,
-                     suggest_backup_folder, system_drive)
+from .common import (IS_WINDOWS, ask, ask_yes, default_env, drive_of, human_size, is_frozen,
+                     running_apps, suggest_backup_folder, system_drive)
 
 TOOL_CHOICES = ("antigravity", "codex", "claude")
 
@@ -277,18 +277,53 @@ MENU = (
 )
 
 
+def _backup_folders():
+    """Every place the tool would normally have saved a backup."""
+    folders = [suggest_backup_folder()]
+    if IS_WINDOWS:
+        for letter in "CDEFGHIJKLMNOPQRSTUVWXYZ":
+            folders.append(letter + ":\\AI-Chat-Backups")
+    unique = []
+    for folder in folders:
+        if os.path.isdir(folder) and os.path.normcase(folder) not in map(os.path.normcase, unique):
+            unique.append(folder)
+    return unique
+
+
+def find_backups():
+    """Backup zips (not before-restore copies) on all drives, newest first."""
+    zips = []
+    for folder in _backup_folders():
+        zips += [z for z in glob.glob(os.path.join(folder, "AI-Chat-Vault_*.zip"))
+                 if "_before-restore_" not in os.path.basename(z)]
+    return sorted(zips, key=os.path.getmtime, reverse=True)
+
+
 def _ask_zip():
-    latest = None
-    folder = suggest_backup_folder()
-    if os.path.isdir(folder):
-        zips = sorted(glob.glob(os.path.join(folder, "AI-Chat-Vault_*.zip")),
-                      key=os.path.getmtime, reverse=True)
-        latest = zips[0] if zips else None
-    prompt = "  Backup zip (drag it into this window)"
-    prompt += f" [{latest}]: " if latest else ": "
-    path = _clean_path(ask(prompt, latest or ""))
-    if not path or not os.path.isfile(path):
-        _p("  File not found.")
+    zips = find_backups()
+    if zips:
+        _p("  Backups found (newest first):")
+        for i, path in enumerate(zips[:9], 1):
+            size = human_size(os.path.getsize(path))
+            when = time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(path)))
+            _p(f"    {i}) {path}  ({size}, {when})")
+        _p()
+        answer = _clean_path(ask(
+            "  Press Enter for 1, type a number, or drag another zip here: ", "1"))
+        if answer.isdigit() and 1 <= int(answer) <= len(zips[:9]):
+            return zips[int(answer) - 1]
+        path = answer
+    else:
+        _p("  No backup found yet.")
+        _p(f"  (Looked in {suggest_backup_folder()} and \\AI-Chat-Backups on every drive.)")
+        _p("  Create one first with option 1, or drag a backup zip from")
+        _p("  another place into this window.")
+        _p()
+        path = _clean_path(ask("  Backup zip (Enter = back to menu): ", ""))
+        if not path:
+            return None
+    if not os.path.isfile(path):
+        _p(f"  File not found: {path}")
         return None
     return path
 
