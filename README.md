@@ -8,9 +8,15 @@ you explaining everything again.
 It also includes a corrected version of the Antigravity sidebar repair from
 [Antigravity Conversation Fix](https://github.com/FutureisinPast/antigravity-conversation-fix).
 
-**Download:** `AI_Chat_Vault.exe` from the [latest release](../../releases/latest).
-No installation and no Python needed for the Windows `.exe`; macOS and Linux
-can run the Python source (3.8+, standard library only).
+![AI Chat Vault window](docs/screenshot.png)
+
+**Download** from the [latest release](../../releases/latest):
+
+- `AI_Chat_Vault.exe`: the app window (double-click it)
+- `AI_Chat_Vault_CLI.exe`: the same features as a text menu and command line
+
+No installation and no Python needed on Windows. macOS and Linux can run the
+Python source (3.8+); the window follows your light or dark mode.
 
 The `.exe` is built from this repository by GitHub Actions
 ([workflow](.github/workflows/release.yml)), so every release can be traced to
@@ -22,9 +28,10 @@ its source commit. It is not code-signed yet, so Windows may show
 
 1. Close Antigravity, Codex (including the VS Code extension) and every
    terminal running Claude Code.
-2. Run **`AI_Chat_Vault.exe`** and choose **1) Back up everything**.
-3. Pick a drive you are **not** formatting. The tool suggests the non-Windows
-   drive with the most free space and warns if you choose `C:`.
+2. Open **`AI_Chat_Vault.exe`**. On **Back up**, tick what to include (sizes
+   are shown), check the **Save to** folder and click **Start backup**.
+3. Save to a drive you are **not** formatting. The tool suggests the
+   non-Windows drive with the most free space and warns if you choose `C:`.
 4. Copy the finished zip to a second place too (USB drive or cloud storage).
 5. Open `readable/INDEX.md` inside the zip and check that your chats are there.
 
@@ -38,24 +45,26 @@ push the repository to GitHub.
    letters** (chats link to folders such as `G:\MyProject`).
 2. Install Antigravity, Codex and Claude Code, sign in, open each once, then
    close them completely.
-3. Run **`AI_Chat_Vault.exe`** → **2) Restore a backup** and pick the zip
-   (you can drag it into the window).
+3. Open **`AI_Chat_Vault.exe`** → **Restore** and pick the backup (backups in
+   `\AI-Chat-Backups` on any drive are listed automatically). Click
+   **Preview changes** if you like, then **Restore**.
 4. Open the apps. Antigravity shows its chats in the sidebar; use
    `codex resume` and `claude --resume` (inside the project folder) for the
-   others. If some Antigravity chats are missing from the sidebar, run
-   **5) Repair Antigravity sidebar index**.
+   others. If some Antigravity chats are missing from the sidebar, use
+   **Antigravity repair**.
 
-## Menu
+## Pages
 
-| Option | What it does |
+| Page | What it does |
 |---|---|
-| 1 Back up everything | Creates `AI-Chat-Vault_<PC>_<date>.zip`, then re-reads it to verify every checksum |
-| 2 Restore a backup | Verifies the zip, then restores it; anything it replaces is saved first |
-| 3 Check a backup file | Verifies a zip without restoring it |
-| 4 Export readable Markdown | Writes every chat as Markdown, grouped by project folder |
-| 5 Repair Antigravity sidebar index | Rebuilds the sidebar list from the chats on disk |
-| 6 Undo an index repair | Puts a saved sidebar index back |
-| 7 Show what would be backed up | Lists every source with its size; changes nothing |
+| Back up | Choose tools and extras with live sizes, pick a folder, start. Creates `AI-Chat-Vault_<PC>_<date>.zip` and re-reads it to verify every checksum. Progress bar with Cancel. |
+| Restore | Lists your backups, shows what each contains, previews changes, then restores the tools you tick; anything it replaces is saved first |
+| Check backup | Verifies a zip without restoring it |
+| Readable export | Writes every chat as Markdown, grouped by project folder |
+| Antigravity repair | Rebuilds the sidebar list from the chats on disk, and undoes a repair |
+| About | Privacy notes and the formatting checklist |
+
+**Show details** at the bottom shows the full log of the current task.
 
 ## What is backed up
 
@@ -136,21 +145,23 @@ Compared with Antigravity Conversation Fix v1.07:
 ## Command line
 
 ```bash
-python chat_vault.py                      # menu
-python chat_vault.py backup --dest D:\AI-Chat-Backups [--include-screenshots] [--no-extensions]
-python chat_vault.py verify  BACKUP.zip
-python chat_vault.py restore BACKUP.zip [--only antigravity,codex,claude] [--dry-run] [--yes]
-python chat_vault.py export  --dest D:\chats
-python chat_vault.py repair-index [--auto] [--drop-missing]
-python chat_vault.py undo-repair [BACKUP.txt]
-python chat_vault.py list
+python chat_vault.py                      # window
+python chat_vault_cli.py                  # text menu
+python chat_vault_cli.py backup --dest D:\AI-Chat-Backups [--include-screenshots] [--no-extensions]
+python chat_vault_cli.py verify  BACKUP.zip
+python chat_vault_cli.py restore BACKUP.zip [--only antigravity,codex,claude] [--dry-run] [--yes]
+python chat_vault_cli.py export  --dest D:\chats
+python chat_vault_cli.py repair-index [--auto] [--drop-missing]
+python chat_vault_cli.py undo-repair [BACKUP.txt]
+python chat_vault_cli.py list
 ```
 
 ## Development
 
 ```bash
+pip install -r requirements-build.txt         # PyInstaller and the sv-ttk theme
 python -m unittest discover -s tests -t .
-python -m PyInstaller AI_Chat_Vault.spec      # builds dist/AI_Chat_Vault.exe
+python -m PyInstaller AI_Chat_Vault.spec      # builds both executables in dist/
 ```
 
 ## Privacy

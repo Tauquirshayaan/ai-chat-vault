@@ -399,16 +399,32 @@ def build_parser():
     p = sub.add_parser("undo-repair", help="put an index backup back")
     p.add_argument("backup_file", nargs="?")
 
+    sub.add_parser("gui", help="open the window")
+    sub.add_parser("menu", help="open the text menu")
+
     p = sub.add_parser("list", help="show what a backup would include")
     p.add_argument("--only")
     return parser
 
 
-def main(argv=None):
+def _gui():
+    try:
+        from . import gui
+    except ImportError as error:  # Python built without tkinter
+        _p(f"  The window needs tkinter ({error}); showing the text menu instead.")
+        return menu()
+    return gui.main()
+
+
+def main(argv=None, default="menu"):
     argv = sys.argv[1:] if argv is None else argv
     if not argv:
-        return menu()
+        return _gui() if default == "gui" else menu()
     args = build_parser().parse_args(argv)
+    if args.command == "gui":
+        return _gui()
+    if args.command == "menu":
+        return menu()
     _banner()
     if args.command == "backup":
         return cmd_backup(args.dest, _parse_tools(args.only), args.include_logins,
@@ -431,7 +447,7 @@ def main(argv=None):
     return 1
 
 
-def run():
+def run(default="menu"):
     """Entry point that keeps a double-clicked window open on errors."""
     for stream in (sys.stdout, sys.stderr):
         try:  # chat titles may contain characters the console cannot show
@@ -439,7 +455,7 @@ def run():
         except Exception:
             pass
     try:
-        return main()
+        return main(default=default)
     except KeyboardInterrupt:
         _p("\n  Cancelled.")
         return 1

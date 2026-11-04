@@ -3,7 +3,7 @@
 AI Chat Vault: back up, restore, export and repair your local
 Antigravity, Codex and Claude Code chats.
 
-Double-click (or run with no arguments) for the menu, or see --help.
+Run with no arguments for the window, "menu" for the text menu, or see --help.
 Requires Python 3.8+ and no external packages.
 """
 import sys
@@ -20,4 +20,4 @@ if sys.version_info < (3, 8):
 from chatvault.cli import run  # noqa: E402
 
 if __name__ == "__main__":
-    sys.exit(run())
+    sys.exit(run(default="gui"))

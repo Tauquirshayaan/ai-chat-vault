@@ -31,6 +31,15 @@ class BackupError(RuntimeError):
     pass
 
 
+class Cancelled(Exception):
+    """Raised from a progress callback to stop a backup, check or export."""
+
+
+def _tick(progress, done, total, label):
+    if progress is not None:
+        progress(done, total, label)
+
+
 def _log(message=""):
     print(message, flush=True)
 
@@ -130,6 +139,30 @@ def optional_sizes(plan):
     return sizes
 
 
+def filter_plan(plan, tools=None, include_extensions=True, include_recordings=False,
+                include_logins=False):
+    """Return a copy of a full scan narrowed to the user's choices (no rescan)."""
+    from .sources import LOGIN_FILES, is_excluded
+    wanted = {TOOL_KEYS[t] for t in tools} if tools else None
+    roots = []
+    for item in plan["roots"]:
+        root = item["root"]
+        if wanted is not None and root.tool not in wanted:
+            continue
+        if root.category == "extensions" and not include_extensions:
+            continue
+        files = item["files"]
+        if not include_recordings:
+            files = [f for f in files if f[4] != "recordings"]
+        if not include_logins and LOGIN_FILES.get(root.id):
+            files = [f for f in files if not is_excluded(f[0], LOGIN_FILES[root.id])]
+        roots.append(dict(item, files=files))
+    narrowed = dict(plan, roots=roots, tools=list(tools) if tools else None,
+                    include_logins=include_logins and plan["include_logins"])
+    _recount(narrowed)
+    return narrowed
+
+
 def drop_optional(plan, name):
     """Remove an optional part ('extensions' or a group name) from a plan."""
     if name == "extensions":
@@ -183,8 +216,27 @@ def _add_file(zf, arcname, source, mtime):
     return size, digest.hexdigest()
 
 
-def write_backup(plan, dest_dir, readable=True, verify=True, name=None):
-    """Write the planned backup into a zip in dest_dir; return its path."""
+def write_backup(plan, dest_dir, readable=True, verify=True, name=None, progress=None):
+    """
+    Write the planned backup into a zip in dest_dir; return (path, manifest).
+    ``progress(done, total, label)`` is called as files are saved and checked;
+    it may raise Cancelled to stop. An unfinished zip is always removed.
+    """
+    stamp = time.strftime("%Y-%m-%d_%H%M%S")
+    host = "".join(c for c in socket.gethostname() if c.isalnum() or c in "-_") or "PC"
+    name = name or f"AI-Chat-Vault_{host}_{stamp}.zip"
+    partial = os.path.join(dest_dir, name) + ".partial"
+    try:
+        return _write_backup(plan, dest_dir, readable, verify, name, progress)
+    except BaseException:
+        try:
+            os.remove(partial)
+        except OSError:
+            pass
+        raise
+
+
+def _write_backup(plan, dest_dir, readable, verify, name, progress):
     os.makedirs(dest_dir, exist_ok=True)
     try:
         free = shutil.disk_usage(dest_dir).free
@@ -195,11 +247,10 @@ def write_backup(plan, dest_dir, readable=True, verify=True, name=None):
             f"Not enough free space in {dest_dir}: need up to {human_size(plan['bytes'])}, "
             f"have {human_size(free)}.")
 
-    stamp = time.strftime("%Y-%m-%d_%H%M%S")
-    host = "".join(c for c in socket.gethostname() if c.isalnum() or c in "-_") or "PC"
-    name = name or f"AI-Chat-Vault_{host}_{stamp}.zip"
     final_path = os.path.join(dest_dir, name)
     partial = final_path + ".partial"
+    total_files = plan["files"]
+    overall = 0
 
     manifest = {
         "format": FORMAT,
@@ -229,6 +280,8 @@ def write_backup(plan, dest_dir, readable=True, verify=True, name=None):
                 rels = {f[0] for f in files}
                 done = 0
                 for rel, full, size, mtime, _group in files:
+                    _tick(progress, overall, total_files, f"Backing up {root.tool}")
+                    overall += 1
                     base = None
                     for suffix in SQLITE_SIDECARS:
                         if rel.endswith(suffix):
@@ -272,6 +325,7 @@ def write_backup(plan, dest_dir, readable=True, verify=True, name=None):
 
             if readable:
                 _log("  Creating readable Markdown copy of all chats ...")
+                _tick(progress, total_files, total_files, "Creating readable copy of chats")
                 from .export import export_all
                 out = os.path.join(work, "readable")
                 try:
@@ -293,7 +347,7 @@ def write_backup(plan, dest_dir, readable=True, verify=True, name=None):
     os.replace(partial, final_path)
     if verify:
         _log("  Verifying backup ...")
-        ok, problems, _ = verify_backup(final_path, quiet=True)
+        ok, problems, _ = verify_backup(final_path, quiet=True, progress=progress)
         if not ok:
             raise BackupError("Backup verification failed:\n    " + "\n    ".join(problems[:20]))
         _log("      every file matches its checksum")
@@ -328,13 +382,14 @@ def load_manifest(zf):
     return manifest
 
 
-def verify_backup(zip_path, quiet=False):
+def verify_backup(zip_path, quiet=False, progress=None):
     """Re-read every file and compare it with its recorded SHA-256."""
     problems = []
     with zipfile.ZipFile(zip_path) as zf:
         manifest = load_manifest(zf)
         names = set(zf.namelist())
         for i, entry in enumerate(manifest["files"], 1):
+            _tick(progress, i, len(manifest["files"]), "Checking backup")
             arcname = f"files/{entry['root']}/{entry['rel']}"
             if arcname not in names:
                 problems.append(f"missing: {arcname}")
@@ -401,7 +456,7 @@ def plan_restore(manifest, env=None, tools=None):
 
 
 def restore_backup(zip_path, env=None, tools=None, dry_run=False, check_running=True,
-                   safety_dir=None, skip_verify=False):
+                   safety_dir=None, skip_verify=False, progress=None):
     """
     Restore files from a backup. Existing files that would be replaced (and
     stale SQLite -wal/-shm files beside restored databases) are first saved
@@ -418,7 +473,7 @@ def restore_backup(zip_path, env=None, tools=None, dry_run=False, check_running=
 
     if not skip_verify:
         _log("  Verifying backup before restoring ...")
-        ok, problems, manifest = verify_backup(zip_path, quiet=True)
+        ok, problems, manifest = verify_backup(zip_path, quiet=True, progress=progress)
         if not ok:
             raise BackupError("The backup is damaged; nothing was restored:\n    "
                               + "\n    ".join(problems[:20]))
@@ -470,6 +525,7 @@ def restore_backup(zip_path, env=None, tools=None, dry_run=False, check_running=
 
     with zipfile.ZipFile(zip_path) as zf:
         for i, (entry, root, target) in enumerate(to_write, 1):
+            _tick(progress, i, len(to_write), "Restoring files")
             arcname = f"files/{entry['root']}/{entry['rel']}"
             os.makedirs(long_path(os.path.dirname(target)), exist_ok=True)
             temp = target + ".chatvault-tmp"
