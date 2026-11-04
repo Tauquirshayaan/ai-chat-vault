@@ -1007,6 +1007,9 @@ class App(tk.Tk):
         except Exception:
             pass
         self.dark, self.themed = self._apply_theme()
+        # The theme recolours plain tk widgets when its change event runs; let
+        # that happen now so it cannot repaint the sidebar built below.
+        self.update()
         self.colors = PALETTES["dark" if self.dark else "light"]
         self.configure(background=self.colors["bg"])
         self.frame_background = ttk.Style(self).lookup("TFrame", "background") or self.colors["bg"]
@@ -1032,7 +1035,7 @@ class App(tk.Tk):
         self.bind_all("<Button-4>", lambda e: self._on_wheel(e, -1))
         self.bind_all("<Button-5>", lambda e: self._on_wheel(e, 1))
         self.show_page(start_page)
-        self.after(80, self._tick)
+        self._tick_id = self.after(80, self._tick)
 
     # theme and styles
     def _apply_theme(self):
@@ -1246,7 +1249,14 @@ class App(tk.Tk):
 
     def _tick(self):
         self.runner.poll()
-        self.after(80, self._tick)
+        self._tick_id = self.after(80, self._tick)
+
+    def destroy(self):
+        try:
+            self.after_cancel(self._tick_id)
+        except Exception:
+            pass
+        super().destroy()
 
     def _on_close(self):
         if self.runner.busy:
