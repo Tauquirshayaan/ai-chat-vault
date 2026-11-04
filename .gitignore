@@ -1,0 +1,25 @@
+# Build output
+*.exe
+/build/
+/dist/
+
+# Backups and exports created while testing
+AI-Chat-Vault_*.zip
+AI-Chat-Vault_*.zip.partial
+AI-Chat-Export_*/
+ChatVault_index_backups/
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE files
+.idea/
+.vscode/
